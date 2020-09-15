@@ -8,7 +8,7 @@ variable "node_pool_name" {
 
 variable "location" {
   description = "GCP region"
-  default     = "europe-west4"
+  default     = "europe-west2"
 }
 
 
@@ -35,9 +35,9 @@ variable "node_location" {
   type        = list(string)
 }
 
-variable "max_pods" {
-  description = "maximum pods per node"
-}
+# variable "max_pods" {
+#   description = "maximum pods per node"
+# }
 
 variable "disk_size_gb" {
   description = "disk size for nodes"

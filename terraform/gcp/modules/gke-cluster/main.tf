@@ -6,13 +6,12 @@ data "google_container_engine_versions" "gke_version" {
 
 resource "google_container_cluster" "gke" {
   name                      = var.cluster_name
-  project                   = random_id.project.hex
+  project                   = "kelly-289613"
   location                  = var.location
-  default_max_pods_per_node = var.max_pods
   remove_default_node_pool  = true
   initial_node_count        = var.node_count
   min_master_version        = "latest"
-
+  
   master_auth {
     username = ""
     password = ""
@@ -36,18 +35,15 @@ resource "google_container_cluster" "gke" {
     }
   }
 
-  resource_labels = {
-    env = var.env
-  }
 
 }
 
 
-resource "google_container_node_pool" "managed-gke-node-pool" {
+resource "google_container_node_pool" "gke-node-pool" {
   name       = var.node_pool_name
   location   = var.location
-  project    = random_id.project.hex
-  cluster    = google_container_cluster.managed-gke.name
+  project    = "kelly-289613"
+  cluster    = google_container_cluster.gke.name
   node_count = 1
   version    = "latest"
 

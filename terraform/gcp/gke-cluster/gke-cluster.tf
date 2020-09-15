@@ -1,6 +1,5 @@
 module "managed-gke" {
-  source         = ".//modules/gke-cluster"
-  env            = "test"
+  source         = "../modules/gke-cluster"
   #----------GKE Cluster---------
   cluster_name   = "test"
   node_pool_name = "test-pool"
@@ -8,8 +7,8 @@ module "managed-gke" {
   min_node       = "1"
   max_node       = "8"
   node_count     = "2"
-  max_pods       = "110"
-  node_location  = ["europe-west4-a", "europe-west4-b"]
+  node_location  = ["europe-west2-a", "europe-west2-b"]
   disk_type      = "pd-standard"
   disk_size_gb   = "100"
+  location       = "europe-west2"
 }

@@ -201,7 +201,7 @@ resource "google_container_node_pool" "ged-gke-node-pool" {
     max_node_count = var.max_node
   }
 
-  gement {
+  management {
     auto_repair = true
   }
 

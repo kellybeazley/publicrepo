@@ -9,3 +9,8 @@
 *.tfvars
 
 .DS_Store
+
+serviceaccount.json
+
+provider.tf
+backend.tf

@@ -1,5 +1,5 @@
 module "aks-cluster1" {
-  source                = ".//modules/aks-cluster"
+  source                = "../modules/aks-cluster"
   name                  = "kelly-test"
   rg                    = "kelly"
   location              = "westeurope"

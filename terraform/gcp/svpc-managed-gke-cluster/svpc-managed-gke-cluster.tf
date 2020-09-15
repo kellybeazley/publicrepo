@@ -1,5 +1,5 @@
 module "managed-gke" {
-  source                = ".//modules/managed-gke"
+  source                = "../modules/svpc-managed-gke-cluster"
   # PROJECT NAME AND USERS
   project_name          = "test-gke"
   user_email            = ["kelly@email.com"]

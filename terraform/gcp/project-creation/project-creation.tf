@@ -1,7 +1,7 @@
 module "gcp-project" {
-  source          = ".//modules/project-creation"
-  project_name    = "project_name"
-  billing_account = "*************"
+  source          = "../modules/project-creation"
+  project_name    = "project-name"
+  billing_account = ""
   gcp_project_id  = "project-"
   # PROJECT TAGS -----------------------------------------------------------------------------------------------
   # Only hyphens (-), underscores (_), lowercase characters and numbers are allowed. International characters are allowed.
