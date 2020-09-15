@@ -206,7 +206,7 @@ resource "google_container_node_pool" "ged-gke-node-pool" {
   }
 
   node_config {
-    machine_type = var.machine_type
+    machine_type    = var.machine_type
     service_account = google_service_account.service_account.email
 
     oauth_scopes = [

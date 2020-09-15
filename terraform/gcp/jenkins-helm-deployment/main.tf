@@ -20,7 +20,7 @@ resource "google_dns_record_set" "jenkins-helm" {
 
 resource "google_compute_managed_ssl_certificate" "jenkins-cert" {
   provider = google-beta
-  name = var.cert_name
+  name     = var.cert_name
 
   managed {
     domains = [var.domain_name]

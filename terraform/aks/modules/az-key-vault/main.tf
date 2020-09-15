@@ -37,6 +37,6 @@ resource "azurerm_key_vault" "kel-kv" {
   }
 
   tags = {
-    env  = "test"
+    env = "test"
   }
 }

@@ -1,19 +1,19 @@
 module "managed-gke" {
-  source         = ".//modules/managed-gke"
+  source = ".//modules/managed-gke"
   # PROJECT NAME AND USERS
-  project_name   = "test-gke"
-  user_email     = ["kelly@email.com"]
+  project_name = "test-gke"
+  user_email   = ["kelly@email.com"]
   # PROJECT TAGS -----------------------------------------------------------------------------------------------
   # Only hyphens (-), underscores (_), lowercase characters and numbers are allowed. International characters are allowed.
-  env            = "test"
-  costcentre     = "********"
-  owner          = "kel"
-  team           = "kel-team"
+  env        = "test"
+  costcentre = "********"
+  owner      = "kel"
+  team       = "kel-team"
   #-----------------------------------------
   #SUBNETS
-  subnet         = "*.*.*.*/27"
-  pods           = "*.*.*.*/20"
-  services       = "*.*.*.*/20"
+  subnet   = "*.*.*.*/27"
+  pods     = "*.*.*.*/20"
+  services = "*.*.*.*/20"
   #----------GKE Cluster---------
   cluster_name   = "test-gke"
   node_pool_name = "test-gke-pool"
