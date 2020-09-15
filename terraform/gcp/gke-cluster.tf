@@ -1,6 +1,6 @@
 module "managed-gke" {
-  source = ".//modules/gke-cluster"
-  env    = "test"
+  source         = ".//modules/gke-cluster"
+  env            = "test"
   #----------GKE Cluster---------
   cluster_name   = "test"
   node_pool_name = "test-pool"
