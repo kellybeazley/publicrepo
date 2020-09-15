@@ -11,7 +11,7 @@ vault:
   image: vault
   script:
   - export VAULT_ADDR=https://vault.*****.***
-  - export VAULT_TOKEN="$(vault write -field=token auth/jwt/login role=app2020 jwt=$CI_JOB_JWT)"
+  - export VAULT_TOKEN="$(vault write -field=token auth/jwt/login role=apptest jwt=$CI_JOB_JWT)"
   - export SVC_ACCOUNT="$(vault kv get -field=serviceaccount1 path/serviceaccount)"
   - echo "$SVC_ACCOUNT" | base64 -d > serviceaccount.json
 
