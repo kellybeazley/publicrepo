@@ -1,0 +1,26 @@
+trigger:
+  branches:
+    include:
+    - master
+  paths:
+    include:
+    - aks/params.json
+    - aks/aks2.json
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: arm_deployment
+  jobs:
+  - job: arm_job
+    steps:
+    - task: AzureCLI@2
+      inputs:
+        workingDirectory: $(Build.SourcesDirectory)/aks/
+        azureSubscription: 'subscription name (*****-subscription-id*********)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: 'az deployment group create -g kelly -f aks2.json -p @params.json -n kellyaks --verbose'
+        csmFile: 'kelly'
+        deploymentMode: 'Incremental'

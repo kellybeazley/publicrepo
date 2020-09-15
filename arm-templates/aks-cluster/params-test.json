@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceName": {
+      "value": "kelly-arm-template1"
+    },
+    "location": {
+      "value": "westeurope"
+    },
+    "dnsPrefix": {
+      "value": "kel-dns"
+    },
+    "osDiskSizeGB": {
+      "value": 0
+    },
+    "kubernetesVersion": {
+      "value": "1.17.7"
+    },
+    "maxPods": {
+      "value": 30
+
+    },
+    "enableRBAC": {
+      "value": true
+
+    },
+    "vmssNodePool": {
+      "value": false
+
+    },
+    "windowsProfile": {
+
+      "value": false
+
+    },
+    "servicePrincipalClientId": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/***************/resourceGroups/kelly/providers/Microsoft.KeyVault/vaults/mykeyvaultname"
+        },
+        "secretName": "kellytfclientid"
+      }
+    },
+    "servicePrincipalClientSecret": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/***************/resourceGroups/kelly/providers/Microsoft.KeyVault/vaults/mykeyvaultname"
+        },
+        "secretName": "kellytfspnpassword"
+      }
+    },
+    "enablePrivateCluster": {
+
+      "value": false
+    },
+    "aadSessionKey": {
+      "value": ""
+    },
+    "enableHttpApplicationRouting": {
+      "value": true
+    }
+  }
+}

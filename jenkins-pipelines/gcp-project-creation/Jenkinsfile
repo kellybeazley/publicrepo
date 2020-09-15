@@ -1,0 +1,316 @@
+pipeline {
+  agent {
+    kubernetes {
+      label 'project-factory'
+      yaml """
+spec:
+  containers:
+  - name: terraform
+    image: hashicorp/terraform
+    command:
+    - cat
+    tty: true
+  - name: pwsh
+    image: mcr.microsoft.com/powershell:latest
+    resources:
+      requests:
+        cpu: 200m
+        memory: 500Mi
+    command:
+    - cat
+    tty: true
+"""
+}
+ }
+
+   stages {
+
+          stage('Checkout & Initialise variables') {
+              steps {withVault(configuration: [timeout: 60], vaultSecrets: [[path: 'path/secretname', secretValues: [[envVar: 'SVC_ACCOUNT', vaultKey: 'serviceaccount']]]]) {
+                container('terraform') {
+                  sh 'mkdir -p creds'
+                  sh 'echo $SVC_ACCOUNT | base64 -d > ./creds/serviceaccount.json'
+                     script {
+                             env.COMMIT = sh(script: 'git log --format=%B -n 1 ', returnStdout:true)
+                             }
+                     script{
+                           env.PROJECT = sh (returnStdout: true, script: '''echo $(cat main.tf | grep project_name | cut -d '"' -f 2)''').trim()
+
+                            }
+                      script{
+                            env.USER_EMAIL = sh (returnStdout: true, script:''' echo $(cat main.tf |grep user_email | cut -d '"' -f 2,4,6,8,10,12,14,16,18,20 | sed "s/\\"/,/g")''').trim()
+
+                            }
+                         }
+                      }
+                   }
+                 }
+
+
+        stage('Terraform Plan')  {
+           steps {
+            container('terraform') {
+                 sh 'terraform init'
+                 sh "terraform workspace new $env.PROJECT"
+                 sh 'terraform plan'
+
+                }
+            }
+        post {
+          success {
+            slackSend color: 'good', message: "Terraform plan successful, GCP project creation started for project: $env.PROJECT Git commit: $env.COMMIT"
+          }
+        failure {
+          slackSend color: 'danger', message: "Terraform plan failed, GCP project creation aborted for project: $env.PROJECT Please check $BUILD_URL logs"
+        }
+      }
+    }
+
+    stage(' Approval') {
+            steps {
+              container('terraform') {
+                slackSend color: '#0023FF', message: "GCP project requested, please check the terraform configuration and approve/abort $BUILD_URL/input/"
+                slackUploadFile credentialId: 'slack-token', channel: '#channel-name', filePath: 'main.tf', initialComment: "Terraform configuraton for GCP project request: $env.PROJECT"
+                script {
+                    def userInput = input(id: 'confirm', message: 'Apply Terraform?', parameters: [ [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Apply terraform', name: 'Confirm'] ])
+                      }
+                    }
+                  }
+                }
+
+      stage('Terraform Apply & Firebase dynamic link') {
+              steps {
+                container('terraform') {
+                    sh 'terraform apply -auto-approve'
+                    script {
+                    env.PROJECT_ID = sh (returnStdout: true, script: '''echo $(terraform output | awk '{print $3}')''').trim()
+                    }
+                     httpRequest (consoleLogResponseBody: true, contentType: 'APPLICATION_JSON', httpMode: 'POST', requestBody: """{
+                       "dynamicLinkInfo": {
+                         "domainUriPrefix": "https://firebase.com",
+                         "link": "https://mylonglinkgoesherewhichneedsshortenedappendedwithprojectid$env.PROJECT_ID",
+                         },
+                         "suffix": {
+                           "option": "SHORT"},
+                           }""",
+                           url: "https://firebasedynamiclinks.googleapis.com/v1/shortLinks?key=••••••••••apikeyhere••••••••••", outputFile: '/home/jenkins/agent/workspace/output.txt')
+
+                          script{
+                    env.REPORT = sh (returnStdout: true, script: '''echo $(cat /home/jenkins/agent/workspace/output.txt | grep shortLink | cut -d '"' -f 4)''').trim()
+                     }
+                  }
+                }
+              }
+
+      stage('Get Token for form') {
+              steps {
+                withVault(configuration: [timeout: 60], vaultSecrets: [[path: 'path/privatekey', secretValues: [[envVar: 'PRIVATE_KEY', vaultKey: 'privatekey']]]]) {
+                withVault(configuration: [timeout: 60], vaultSecrets: [[path: 'path/publickey', secretValues: [[envVar: 'PUBLIC_KEY', vaultKey: 'publickey']]]]) {
+                  container('pwsh') {
+                       sh 'echo $PUBLIC_KEY | base64 -d > ./publickey.txt'
+                       sh 'echo $PRIVATE_KEY | base64 -d > ./privatekey.txt'
+                       pwsh label: 'api', script: """function GenerateToken {
+
+                           # Get the Keys from local Files
+                           \$pubkey =  Get-Content "$WORKSPACE/publickey.txt"
+                           \$prvkey =  Get-Content "$WORKSPACE/privatekey.txt"
+
+                           # Format Date with UTC
+                           \$localtime = Get-Date
+                           \$UTC = \$localtime.ToUniversalTime()
+                           \$date = \$UTC.ToString("yyyyMMdd")
+
+                           # Define the Hash Algorithm
+                           \$hasher = [System.Security.Cryptography.SHA256]::Create()
+
+                           # Build API Hash
+                           \$pwString = \$date + \$prvkey
+                           \$pwEncoded =[System.Text.Encoding]::UTF8.GetBytes(\$pwString)
+                           \$Hash = [System.BitConverter]::ToString(\$hasher.ComputeHash(\$pwEncoded))
+                           \$apiHash = \$Hash.Replace("-",\$null)
+
+                           # Build the Digest String
+                           \$digest = "apikey=\$pubkey,timezone=UTC,algorithm=sha256,apihash=\$apiHash"
+
+                           # Convert Digest to Base64 String
+                           \$encoded = [System.Text.Encoding]::UTF8.GetBytes(\$digest)
+                           \$apiDigest = [System.Convert]::ToBase64String(\$encoded)
+
+                           # API Interface
+                           \$session_url = "https://url.com"
+
+                           # Build the Header, and do an Invoke Request
+                           \$headers = @{
+                               'Accept' = 'application/json'
+                               'Authorization' = "APIDigest \$apiDigest"
+                           }
+                           Invoke-RestMethod -Uri \$session_url -Method Post -Headers \$headers -Body \$null -Verbose | ConvertTo-Json -Depth 50 | Out-File -FilePath $WORKSPACE/token.txt
+                       }
+
+                       # Generate a new Token
+                       \$token = GenerateToken
+
+                       # Show json
+                       \$token
+
+                       # Get Access Token
+                       \$accessToken = \$token.access_token
+
+                       # Show Access Token
+                       \$accessToken
+                                                 """
+                script {
+                    env.TOKEN = sh (returnStdout: true, script: '''echo $(cat $WORKSPACE/token.txt |grep access_token | awk '{print \$2}'| cut -d '"' -f 2)''').trim()
+                         }
+
+                       }
+                     }
+                   }
+                 }
+               }
+             }
+
+post {
+    success {
+        slackSend color: 'good', message: "GCP project creation successful for project: $env.PROJECT"
+        slackSend tokenCredentialId: 'slack-token', botUser: 'true', channel: '@kellybeazley', color: 'good', message: "Your project: $env.PROJECT has been created and this is your cost report URL $env.REPORT"
+        emailext body: """<html>
+
+        <head>
+            <meta charset="UTF-8">
+            <meta content="width=device-width, initial-scale=1" name="viewport">
+            <meta name="x-apple-disable-message-reformatting">
+            <meta http-equiv="X-UA-Compatible" content="IE=edge">
+            <meta content="telephone=no" name="format-detection">
+            <title></title>
+            <!--[if (mso 16)]>
+            <style type="text/css">
+            a {text-decoration: none;}
+            </style>
+            <![endif]-->
+            <!--[if gte mso 9]><style>sup { font-size: 100% !important; }</style><![endif]-->
+        </head>
+
+        <body>
+            <div class="es-wrapper-color">
+                <!--[if gte mso 9]>
+        			<v:background xmlns:v="urn:schemas-microsoft-com:vml" fill="t">
+        				<v:fill type="tile" color="#f6f6f6"></v:fill>
+        			</v:background>
+        		<![endif]-->
+                <table class="es-wrapper" width="100%" cellspacing="0" cellpadding="0">
+                    <tbody>
+                        <tr>
+                            <td class="esd-email-paddings" valign="top">
+                                <table class="esd-header-popover es-header" cellspacing="0" cellpadding="0" align="center">
+                                    <tbody>
+                                        <tr>
+                                            <td class="esd-stripe" align="center">
+                                                <table class="es-header-body" width="600" cellspacing="0" cellpadding="0" bgcolor="#ffffff" align="center">
+                                                    <tbody>
+                                                        <tr>
+                                                            <td class="esd-structure es-p20t es-p20r es-p20l" align="left">
+                                                                <table cellpadding="0" cellspacing="0" width="100%">
+                                                                    <tbody>
+                                                                        <tr>
+                                                                            <td width="560" class="esd-container-frame" align="center" valign="top">
+                                                                                <table cellpadding="0" cellspacing="0" width="100%">
+                                                                                    <tbody>
+                                                                                        <tr>
+                                                                                            <td align="center" class="esd-block-image"><a target="_blank"><img class="adapt-img" src="https://fhohlc.stripocdn.email/content/guids/CABINET_c6338f22c5a170c286d3379ada2e0bfe/images/61921573222864220.png" alt style="display: block;" width="350"></a></td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </td>
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <table class="es-content esd-footer-popover" cellspacing="0" cellpadding="0" align="center">
+                                    <tbody>
+                                        <tr>
+                                            <td class="esd-stripe" align="center">
+                                                <table class="es-content-body" width="600" cellspacing="0" cellpadding="0" bgcolor="#ffffff" align="center">
+                                                    <tbody>
+                                                        <tr>
+                                                            <td class="es-p20t es-p20r es-p20l esd-structure" align="left">
+                                                                <table width="100%" cellspacing="0" cellpadding="0">
+                                                                    <tbody>
+                                                                        <tr>
+                                                                            <td class="esd-container-frame" width="560" valign="top" align="center">
+                                                                                <table width="100%" cellspacing="0" cellpadding="0">
+                                                                                    <tbody>
+                                                                                        <tr>
+                                                                                            <td align="left" class="esd-block-text">
+                                                                                                <p><br></p>
+                                                                                                <p style="font-size: 20px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><strong>Hello,</strong></p>
+                                                                                                <p style="font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><br></p>
+                                                                                                <p style="color: #808080; font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;">Your GCP project you requested has now been created.</p>
+                                                                                                <p style="color: #808080; font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><br></p>
+                                                                                                <p style="color: #808080; font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><strong>Project Name: </strong>$env.PROJECT</p>
+                                                                                                <p style="color: #808080; font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><strong>Project ID: </strong>$env.PROJECT_ID</p>
+                                                                                                <p style="font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><br></p>
+                                                                                                <p style="color: #808080; font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;">To access a cost report of your project, please bookmark the following link for your report $env.REPORT</p>
+                                                                                                <p style="font-size: 16px; color: #808080; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;">This report will not show any data until a cost has been incurred by your GCP Project.</p>
+                                                                                                <p style="color: #808080; font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><br></p>
+                                                                                                <p style="color: #808080; font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><u>Please note </u>- you need to be logged into **** first before clicking the URL otherwise you will not see your custom report.</p>
+                                                                                                <p style="color: #808080; font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><br></p>
+                                                                                                <p style="color: #808080; font-size: 16px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;">If you need to get in touch, please reply to this email or message us on slack <strong>#support.</strong></p>
+                                                                                                <p style="font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><br></p>
+                                                                                                <p style="font-size: 19px; font-family: helvetica, 'helvetica neue', arial, verdana, sans-serif;"><strong>Cloud Team</strong></p>
+                                                                                                <p style="font-size: 19px;"><br></p>
+                                                                                                <p style="font-size: 16px;"><br></p>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </td>
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </body>
+
+        </html>""", subject: 'Your GCP Project has been created', to: "$env.USER_EMAIL"
+
+        httpRequest (consoleLogResponseBody: true, contentType: 'APPLICATION_JSON', acceptType: 'APPLICATION_JSON',customHeaders: [[maskValue: true, name: 'x-api-token', value: "$env.TOKEN"]], httpMode: 'PUT', requestBody: """
+            {
+                "cloud_resource_request_status_id":"3",
+                "gcp_project_id":"$env.PROJECT_ID"
+            }
+            """, url: "https://urltoform.com/$env.PROJECT", wrapAsMultipart: false
+                    )
+
+      }
+    failure {
+        slackSend color: 'danger', message: "GCP project creation failed for project: $env.PROJECT Please check $BUILD_URL Git Commit: $env.COMMIT"
+        httpRequest (consoleLogResponseBody: true, contentType: 'APPLICATION_JSON', acceptType: 'APPLICATION_JSON', customHeaders: [[maskValue: true, name: 'x-api-token', value: "$env.TOKEN"]], httpMode: 'PUT', requestBody: """
+            {
+                "cloud_resource_request_status_id":"5",
+                "gcp_project_id":"$env.PROJECT_ID",
+                "error":"GCP project creation failed. Please let a cloud team member check the error."
+            }
+            """, url: "https://urltoform.com/$env.PROJECT", wrapAsMultipart: false
+        )
+    }
+  }
+}

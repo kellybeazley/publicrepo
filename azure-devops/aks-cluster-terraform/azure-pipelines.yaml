@@ -1,0 +1,33 @@
+
+trigger:
+  branches:
+    include:
+    - master
+  paths:
+    include:
+    - aks/main.tf
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: terraform-vars
+  - name: subscription_id
+    value: "********-****-****-****-***********"
+
+steps:
+  - task: TerraformInstaller@0
+    inputs:
+      terraformVersion: '0.13.1'
+
+  - script: terraform init -backend-config=storage_account_name=kellytf -backend-config=container_name=kellytf -backend-config=key=terraform/state -backend-config=resource_group_name=kelly -backend-config=subscription_id=$(subscription_id) -backend-config=tenant_id=$(tenant-id) -backend-config=client_id=$(kelly-tf-client-id) -backend-config=client_secret=$(kellytf-spn-password)
+    workingDirectory: $(Build.SourcesDirectory)/aks/
+
+  - script: terraform workspace new $(Build.BuildId)
+    workingDirectory: $(Build.SourcesDirectory)/aks/
+
+  - script: terraform plan -var="client_secret=$(kellytf-spn-password)" -var="client_id=$(kelly-tf-client-id)" -var="tenant_id=$(tenant-id)" -var="subscription_id=$(subscription_id)" -out="out.plan"
+    workingDirectory: $(Build.SourcesDirectory)/aks/
+
+  - script: terraform apply out.plan
+    workingDirectory: $(Build.SourcesDirectory)/aks/

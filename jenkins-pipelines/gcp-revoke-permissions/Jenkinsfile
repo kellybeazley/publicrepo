@@ -1,0 +1,95 @@
+pipeline {
+  agent {
+    kubernetes {
+      label 'iam-lockdown'
+      yaml """
+spec:
+  containers:
+  - name: gcloud
+    image: google/cloud-sdk
+    command:
+    - cat
+    tty: true
+  - name: pwsh
+    image: mcr.microsoft.com/powershell:latest
+    resources:
+      requests:
+        cpu: 200m
+        memory: 500Mi
+    command:
+    - cat
+    tty: true
+"""
+}
+ }
+
+ environment {
+        TF_PATH = "$WORKSPACE/projects"
+}
+ stages {
+
+         stage('Checkout') {
+           steps {
+          withVault(configuration: [timeout: 60], vaultSecrets: [[path: 'path/serviceaccount', secretValues: [[envVar: 'SVC_ACCOUNT', vaultKey: 'serviceaccount1']]]]) {
+               container ('gcloud') {
+                  scmSkip(deleteBuild: false, skipPattern:'.*\\[ci skip\\].*')
+                  sh 'echo $SVC_ACCOUNT | base64 -d > $WORKSPACE/serviceaccount.json'
+                     script {
+                          env.PROJECT_ID = sh(returnStdout: true, script: '''echo $(cat project_id)''').trim()
+                          }
+                     sh "echo $env.PROJECT_ID"
+            }
+         }
+      }
+    }
+      stage('gcloud bash script') {
+          steps {
+        container ('gcloud') {
+             sh 'gcloud auth activate-service-account terraform@********.iam.gserviceaccount.com --key-file=$WORKSPACE/serviceaccount.json'
+             dir("$TF_PATH") {
+             sh """#!/bin/bash
+             for role in  \$(gcloud projects get-iam-policy $env.PROJECT_ID --flatten="bindings[].role" |grep roles/);
+             do
+               echo "\$role"
+               for user in \$(gcloud projects get-iam-policy $env.PROJECT_ID --flatten="bindings[].members" --format="table(bindings.members)" --filter="bindings.role:\$role" | grep user:)
+               do
+               echo \$user >> ${env.PROJECT_ID}.txt
+                gcloud projects remove-iam-policy-binding $env.PROJECT_ID --member=\$user --role=\$role && gcloud projects add-iam-policy-binding $env.PROJECT_ID --member=\$user --role=roles/viewer
+                  done
+                    done
+                """
+        }
+      }
+    }
+    post {
+          failure {
+            slackSend color: 'danger', message: "Failure at Stage: GCLOUD BASH SCRIPT when trying to revoke permissions $BUILD_URL"
+          }
+        }
+      }
+   stage('git commit') {
+   steps {
+     container ('gcloud') {
+       withCredentials([usernamePassword(credentialsId: 'github-token', passwordVariable: 'gittoken', usernameVariable: 'gituser')]) {
+       sh 'git config --global user.email "kelly@****.com" && git config --global user.name "*****"'
+       dir("$TF_PATH") {
+       sh "sort -u -o ${env.PROJECT_ID}.txt ${env.PROJECT_ID}.txt"
+                       }
+       sh "git add projects/${env.PROJECT_ID}.txt"
+       sh 'git commit -m "projectusers [ci skip]" || echo "No changes to commit"'
+       sh "git push https://${gituser}:${gittoken}@github.com/****/******.git HEAD:master"
+        }
+      }
+    }
+  }
+
+
+post {
+    success {
+        slackSend color: 'good', message: "Permissions revoked for $env.PROJECT_ID successfully, users backed up to Github https://github.com/*****/******"
+      }
+    aborted {
+        slackSend color: '#3498db', message: "Build aborted, SCM plugin matches the last commit message skipping build or manually aborted $BUILD_URL"
+    }
+  }
+}

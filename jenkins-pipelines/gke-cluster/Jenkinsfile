@@ -1,0 +1,72 @@
+pipeline {
+  agent {
+    kubernetes {
+      label 'managed-gke'
+      yaml """
+spec:
+  containers:
+  - name: terraform
+    image: hashicorp/terraform
+    resources:
+      requests:
+        cpu: 200m
+        memory: 500Mi
+    command:
+    - cat
+    tty: true
+"""
+}
+ }
+
+   stages {
+
+          stage('Checkout & Initialise variables') {
+              steps {withVault(configuration: [timeout: 60], vaultSecrets: [[path: 'path/serviceaccount', secretValues: [[envVar: 'SVC_ACCOUNT', vaultKey: 'serviceaccount']]]]) {
+                container('terraform') {
+                  sh 'echo $SVC_ACCOUNT | base64 -d > tf-serviceaccount.json'
+                  script{
+                        env.PROJECT = sh (returnStdout: true, script: '''echo $(cat main.tf | grep project_name | cut -d '"' -f 2)''').trim()
+                         }
+                       }
+                     }
+                   }
+                 }
+
+        stage('Terraform validate and plan')  {
+           steps {
+            container('terraform') {
+                 sh 'terraform init'
+                 sh "terraform workspace new $env.PROJECT"
+                 sh "terraform validate"
+                 sh 'terraform plan'
+                }
+              }
+                post  {
+                    success {
+                      slackSend color: 'good', message: "Terraform validate and plan successful, GKE project and cluster creation started for project: $env.PROJECT/. Git commit: $env.COMMIT"
+                          }
+                    failure {
+                      slackSend color: 'danger', message: "Terraform validate and plan failed, GKE project and cluster creation aborted of project: $env.PROJECT/. Please check $BUILD_URL logs"
+                          }
+                        }
+                      }
+
+        stage('Terraform Apply') {
+           steps {
+            container('terraform') {
+                 sh 'terraform apply -auto-approve'
+                  }
+                }
+              }
+            }
+
+post {
+    success {
+        slackSend color: 'good', message: "GKE project and cluster successfully created - project name: $env.PROJECT"
+      }
+    failure {
+        slackSend color: 'danger', message: "GKE project and cluster creation failed. Please check $BUILD_URL Git Commit: $env.COMMIT"
+
+    }
+  }
+}

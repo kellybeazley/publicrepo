@@ -1,0 +1,61 @@
+pipeline {
+  agent {
+    kubernetes {
+      label 'gcp-folder'
+
+    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: terraform
+    image: hashicorp/terraform
+    command:
+    - cat
+    tty: true
+
+"""
+    }
+ }
+
+ environment {
+        TF_PATH = "/home/jenkins/agent/workspace/$JOB_NAME/gcp/gcp-folders"
+        }
+
+ stages {
+
+         stage('Checkout')
+         {
+           steps {
+           withVault(configuration: [timeout: 60], vaultSecrets: [[path: 'path/serviceaccount', secretValues: [[envVar: 'SVC_ACCOUNT', vaultKey: 'serviceaccount1']]]]) {
+               container ('terraform') {
+                  sh 'echo $SVC_ACCOUNT | base64 -d > /home/jenkins/agent/workspace/$JOB_NAME/gcp/gcp-folders/serviceaccount.json'
+                }
+              }
+            }
+          }
+      stage('terraform')
+      {
+      steps {
+        container ('terraform') {
+           dir("$TF_PATH") {
+             sh 'terraform init'
+             sh 'terraform plan'
+             sh 'terraform apply -auto-approve -parallelism=1'
+             sh "terraform output -json > $WORKSPACE/folderids.txt"
+           }
+         }
+       }
+     }
+   }
+
+   post {
+          success {
+              slackSend color: 'good', message: "GCP folders have been created successfully $BUILD_URL"
+              slackUploadFile credentialId: 'slack-token', channel: '#mychannel', filePath: 'folderids.txt', initialComment: 'Folder ids and names'
+              }
+      failure {
+        slackSend color: 'bad', message: "GCP folders creation failed $BUILD_URL"
+        }
+      }
+    }
