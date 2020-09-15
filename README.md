@@ -1,6 +1,4 @@
 # publicrepo
-my code :)
-
 
 Examples of some code I have wrote ranging from Terraform, Jenkins pipelines, Azure DevOps pipelines, Gitlab pipelines, some Helm and Azure resource manager.
 
