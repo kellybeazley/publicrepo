@@ -3,7 +3,7 @@ module "managed-gke" {
   #----------GKE Cluster---------
   cluster_name   = "test"
   node_pool_name = "test-pool"
-  machine_type   = "n1-standard-4"
+  machine_type   = "n1-standard-2"
   min_node       = "1"
   max_node       = "8"
   node_count     = "2"
