@@ -20,42 +20,37 @@ spec:
     - cat
     tty: true
 """
-}
- }
+        }
+      }
 
    stages {
-
-          stage('Checkout & Initialise variables') {
-              steps {withVault(configuration: [timeout: 60], vaultSecrets: [[path: 'path/secretname', secretValues: [[envVar: 'SVC_ACCOUNT', vaultKey: 'serviceaccount']]]]) {
-                container('terraform') {
-                  sh 'mkdir -p creds'
-                  sh 'echo $SVC_ACCOUNT | base64 -d > ./creds/serviceaccount.json'
-                     script {
-                             env.COMMIT = sh(script: 'git log --format=%B -n 1 ', returnStdout:true)
+      stage('Checkout & Initialise variables') {
+         steps {withVault(configuration: [timeout: 60], vaultSecrets: [[path: 'path/secretname', secretValues: [[envVar: 'SVC_ACCOUNT', vaultKey: 'serviceaccount']]]]) {
+             container('terraform') {
+                 sh 'mkdir -p creds'
+                 sh 'echo $SVC_ACCOUNT | base64 -d > ./creds/serviceaccount.json'
+                  script {
+                       env.COMMIT = sh(script: 'git log --format=%B -n 1 ', returnStdout:true)
                              }
-                     script{
-                           env.PROJECT = sh (returnStdout: true, script: '''echo $(cat main.tf | grep project_name | cut -d '"' -f 2)''').trim()
-
+                  script{
+                       env.PROJECT = sh (returnStdout: true, script: '''echo $(cat main.tf | grep project_name | cut -d '"' -f 2)''').trim()
                             }
-                      script{
-                            env.USER_EMAIL = sh (returnStdout: true, script:''' echo $(cat main.tf |grep user_email | cut -d '"' -f 2,4,6,8,10,12,14,16,18,20 | sed "s/\\"/,/g")''').trim()
+                  script{
+                       env.USER_EMAIL = sh (returnStdout: true, script:''' echo $(cat main.tf |grep user_email | cut -d '"' -f 2,4,6,8,10,12,14,16,18,20 | sed "s/\\"/,/g")''').trim()
 
                             }
                          }
                       }
                    }
                  }
-
-
-        stage('Terraform Plan')  {
+      stage('Terraform Plan')  {
            steps {
-            container('terraform') {
+              container('terraform') {
                  sh 'terraform init'
                  sh "terraform workspace new $env.PROJECT"
                  sh 'terraform plan'
-
                 }
-            }
+              }
         post {
           success {
             slackSend color: 'good', message: "Terraform plan successful, GCP project creation started for project: $env.PROJECT Git commit: $env.COMMIT"
@@ -77,15 +72,14 @@ spec:
                     }
                   }
                 }
-
       stage('Terraform Apply & Firebase dynamic link') {
-              steps {
-                container('terraform') {
-                    sh 'terraform apply -auto-approve'
-                    script {
-                    env.PROJECT_ID = sh (returnStdout: true, script: '''echo $(terraform output | awk '{print $3}')''').trim()
-                    }
-                     httpRequest (consoleLogResponseBody: true, contentType: 'APPLICATION_JSON', httpMode: 'POST', requestBody: """{
+           steps {
+              container('terraform') {
+                  sh 'terraform apply -auto-approve'
+                   script {
+                        env.PROJECT_ID = sh (returnStdout: true, script: '''echo $(terraform output | awk '{print $3}')''').trim()
+                          }
+                   httpRequest (consoleLogResponseBody: true, contentType: 'APPLICATION_JSON', httpMode: 'POST', requestBody: """{
                        "dynamicLinkInfo": {
                          "domainUriPrefix": "https://firebase.com",
                          "link": "https://mylonglinkgoesherewhichneedsshortenedappendedwithprojectid$env.PROJECT_ID",
@@ -95,13 +89,12 @@ spec:
                            }""",
                            url: "https://firebasedynamiclinks.googleapis.com/v1/shortLinks?key=••••••••••apikeyhere••••••••••", outputFile: '/home/jenkins/agent/workspace/output.txt')
 
-                          script{
-                    env.REPORT = sh (returnStdout: true, script: '''echo $(cat /home/jenkins/agent/workspace/output.txt | grep shortLink | cut -d '"' -f 4)''').trim()
+                   script{
+                        env.REPORT = sh (returnStdout: true, script: '''echo $(cat /home/jenkins/agent/workspace/output.txt | grep shortLink | cut -d '"' -f 4)''').trim()
                      }
                   }
                 }
               }
-
       stage('Get Token for form') {
               steps {
                 withVault(configuration: [timeout: 60], vaultSecrets: [[path: 'path/privatekey', secretValues: [[envVar: 'PRIVATE_KEY', vaultKey: 'privatekey']]]]) {
@@ -169,7 +162,6 @@ spec:
                  }
                }
              }
-
 post {
     success {
         slackSend color: 'good', message: "GCP project creation successful for project: $env.PROJECT"
@@ -291,7 +283,6 @@ post {
         </body>
 
         </html>""", subject: 'Your GCP Project has been created', to: "$env.USER_EMAIL"
-
         httpRequest (consoleLogResponseBody: true, contentType: 'APPLICATION_JSON', acceptType: 'APPLICATION_JSON',customHeaders: [[maskValue: true, name: 'x-api-token', value: "$env.TOKEN"]], httpMode: 'PUT', requestBody: """
             {
                 "cloud_resource_request_status_id":"3",
@@ -311,6 +302,6 @@ post {
             }
             """, url: "https://urltoform.com/$env.PROJECT", wrapAsMultipart: false
         )
+      }
     }
   }
-}
