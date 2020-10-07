@@ -41,6 +41,7 @@ spec:
               sshagent(['jenkinsgit']) {
                 sh "terraform init -backend-config=resource_group_name=kelly -backend-config=subscription_id=${SUBSCRIPTION_ID} -backend-config=tenant_id=${TENANT_ID} -backend-config=client_id=${CLIENT_ID} -backend-config=client_secret=${PASSWORD} -backend-config=access_key=${ACCESS_KEY} -backend-config=storage_account_name=kellytf -backend-config=container_name=kellytf -backend-config=key=terraform/jenkins"
                 sh "terraform plan -var='client_secret=${PASSWORD}' -var='client_id=${CLIENT_ID}' -var='tenant_id=${TENANT_ID}' -var='subscription_id=${SUBSCRIPTION_ID}' -out=out.plan"
+                sh 'terraform apply out.plan'
          }
        }
      }
