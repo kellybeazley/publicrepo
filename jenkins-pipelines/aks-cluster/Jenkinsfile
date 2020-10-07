@@ -1,0 +1,65 @@
+pipeline {
+  agent {
+    kubernetes {
+      label 'aks-test'
+
+    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: terraform
+    image: hashicorp/terraform
+    command:
+    - cat
+    tty: true
+"""
+}
+ }
+
+ environment {
+        TF_PATH = "/home/jenkins/agent/workspace/$JOB_NAME/azure/aks"
+        GIT_SSH_COMMAND = "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
+
+}
+ stages {
+
+         stage('Checkout')
+         {
+           steps {
+
+               container ('terraform') {
+                  sh "echo ${env.subscription_id}"
+                  sh "echo ${env.tenant_id}"
+            }
+         }
+      }
+
+      stage('terraform')
+      {
+      steps {
+        withVault(configuration: [timeout: 60, vaultCredentialId: 'vault_approle', vaultUrl: 'https://vault.*****.app'], vaultSecrets: [[path: 'jenkins/azure-kelly-test-sp', secretValues: [[envVar: 'SUBSCRIPTION_ID', vaultKey: 'subscription_id'], [envVar: 'TENANT_ID', vaultKey: 'tenant_id'],
+         [envVar: 'CLIENT_ID', vaultKey: 'client_id'],
+          [envVar: 'ACCESS_KEY', vaultKey: 'access_key'], [envVar: 'PASSWORD', vaultKey: 'password']]]]) {
+        container ('terraform') {
+           dir("$TF_PATH") {
+             sshagent(['jenkinsgit']) {
+               sh "terraform init -backend-config=resource_group_name=kelly -backend-config=subscription_id=${SUBSCRIPTION_ID} -backend-config=tenant_id=${TENANT_ID} -backend-config=client_id=${CLIENT_ID} -backend-config=client_secret=${PASSWORD} -backend-config=access_key=${ACCESS_KEY} -backend-config=storage_account_name=kellytf -backend-config=container_name=kellytf -backend-config=key=terraform/jenkins"
+               sh "terraform plan -var='client_secret=${PASSWORD}' -var='client_id=${CLIENT_ID}' -var='tenant_id=${TENANT_ID}' -var='subscription_id=${SUBSCRIPTION_ID}' -out=out.plan"
+        }
+      }
+    }
+  }
+}
+}
+
+   post {
+          success {
+              slackSend color: 'good', message: "AKS cluster created successfully $BUILD_URL", channel: '#kelly-test'
+            }
+      failure {
+        slackSend color: 'bad', message: "AKS Cluster build failed $BUILD_URL", channel: '#kelly-test'
+
+      }
+   }
+}
