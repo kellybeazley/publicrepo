@@ -1,0 +1,8 @@
+---
+- hosts: azure
+  become: true
+  name: main playbook
+  roles:
+    - dist-upgrade
+    - nginx
+    - python3
