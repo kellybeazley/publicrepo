@@ -1,0 +1,4 @@
+---
+- name: Upgrade the OS (apt-get dist-upgrade)
+  become: true
+  apt: upgrade=dist
