@@ -1,0 +1,7 @@
+---
+- name: install Nginx
+  apt: name=nginx state=latest
+
+- name: write the nginx html file
+  template: src=index.html dest=/var/www/html/index.html
+  notify: restart nginx
